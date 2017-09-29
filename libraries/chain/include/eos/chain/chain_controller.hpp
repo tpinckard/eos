@@ -28,6 +28,7 @@
 namespace eos { namespace chain {
    using database = chainbase::database;
    using boost::signals2::signal;
+   using applied_irreverisable_block_func = fc::optional<signal<void(const signed_block&)>::slot_type>;
    struct path_cons_list;
 
    /**
@@ -39,7 +40,8 @@ namespace eos { namespace chain {
          chain_controller(database& database, fork_database& fork_db, block_log& blocklog,
                           chain_initializer_interface& starter, unique_ptr<chain_administration_interface> admin,
                           uint32_t trans_execution_time, uint32_t rcvd_block_trans_execution_time,
-                          uint32_t create_block_trans_execution_time);
+                          uint32_t create_block_trans_execution_time,
+                          const applied_irreverisable_block_func& applied_func = {});
          chain_controller(chain_controller&&) = default;
          ~chain_controller();
 
@@ -52,6 +54,15 @@ namespace eos { namespace chain {
           *  released.
           */
          signal<void(const signed_block&)> applied_block;
+
+         /**
+          *  This signal is emitted after irreversible block is written to disk.
+          *
+          *  You may not yield from this callback because the blockchain is holding
+          *  the write lock and may be in an "inconstant state" until after it is
+          *  released.
+          */
+         signal<void(const signed_block&)> applied_irreversible_block;
 
          /**
           * This signal is emitted any time a new transaction is added to the pending
@@ -363,6 +374,7 @@ namespace eos { namespace chain {
          deque<SignedTransaction>         _pending_transactions;
 
          bool                             _currently_applying_block = false;
+         bool                             _currently_replaying_blocks = false;
          uint64_t                         _skip_flags = 0;
 
          const uint32_t                   _trans_execution_time;

@@ -704,6 +704,9 @@ void chain_controller::_apply_block(const signed_block& next_block)
    // notify observers that the block has been applied
    // TODO: do this outside the write lock...? 
    applied_block( next_block ); //emit
+   if (_currently_replaying_blocks)
+     applied_irreversible_block(next_block);
+
 
 } FC_CAPTURE_AND_RETHROW( (next_block.block_num()) )  }
 
@@ -1156,9 +1159,13 @@ void chain_controller::initialize_chain(chain_initializer_interface& starter)
 chain_controller::chain_controller(database& database, fork_database& fork_db, block_log& blocklog,
                                    chain_initializer_interface& starter, unique_ptr<chain_administration_interface> admin,
                                    uint32_t trans_execution_time, uint32_t rcvd_block_trans_execution_time,
-                                   uint32_t create_block_trans_execution_time)
+                                   uint32_t create_block_trans_execution_time,
+                                   const applied_irreverisable_block_func& applied_func)
    : _db(database), _fork_db(fork_db), _block_log(blocklog), _admin(std::move(admin)), _trans_execution_time(trans_execution_time),
      _rcvd_block_trans_execution_time(rcvd_block_trans_execution_time), _create_block_trans_execution_time(create_block_trans_execution_time) {
+
+   if (applied_func)
+      applied_irreversible_block.connect(*applied_func);
 
    initialize_indexes();
    starter.register_types(*this, _db);
@@ -1184,6 +1191,12 @@ chain_controller::~chain_controller() {
 void chain_controller::replay() {
    ilog("Replaying blockchain");
    auto start = fc::time_point::now();
+
+   auto on_exit = fc::make_scoped_exit([this](){
+      _currently_replaying_blocks = false;
+   });
+   _currently_replaying_blocks = true;
+
    auto last_block = _block_log.read_head();
    if (!last_block) {
       elog("No blocks in block log; skipping replay");
@@ -1344,6 +1357,7 @@ void chain_controller::update_last_irreversible_block()
          auto block = fetch_block_by_number(block_to_write);
          assert(block);
          _block_log.append(*block);
+         applied_irreversible_block(*block);
       }
 
    // Trim fork_database and undo histories
