@@ -134,6 +134,21 @@ void producer_plugin::set_program_options(
          ;
 }
 
+Name producer_plugin::first_producer_name() const
+{
+   return *my->_producers.begin();
+}
+
+fc::ecc::compact_signature producer_plugin::sign_compact(const Name& producer, const fc::sha256& digest) const
+{
+  chain::chain_controller& chain = app().get_plugin<chain_plugin>().chain();
+  public_key_type key = chain.get_producer(producer).signing_key;
+  auto private_key_itr = my->_private_keys.find(key);
+  FC_ASSERT(private_key_itr != my->_private_keys.end(), "Local producer ${prod} has no private key in config.ini", ("prod", producer));
+
+  return private_key_itr->second.sign_compact(digest);
+}
+
 template<typename T>
 T dejsonify(const string& s) {
    return fc::json::from_string(s).as<T>();

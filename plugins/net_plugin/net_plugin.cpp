@@ -6,6 +6,8 @@
 #include <eos/chain/chain_controller.hpp>
 #include <eos/chain/exceptions.hpp>
 #include <eos/chain/block.hpp>
+#include <eos/chain/producer_object.hpp>
+#include <eos/producer_plugin/producer_plugin.hpp>
 
 #include <fc/network/ip.hpp>
 #include <fc/io/raw.hpp>
@@ -478,7 +480,7 @@ namespace eos {
 
   char* connection::convert_tstamp(const tstamp& t)
   {
-    const long NsecPerSec{1000000000};
+    const long long NsecPerSec{1000000000};
     time_t seconds = t / NsecPerSec;
     strftime(ts, ts_buffer_size, "%F %T", localtime(&seconds));
     snprintf(ts+19, ts_buffer_size-19, ".%lld", t % NsecPerSec);
@@ -892,7 +894,26 @@ namespace eos {
         return;
       }
 
+      types::PublicKey peer_key;
+      try {
+        peer_key = ecc::public_key(msg.sig, msg.token, true);
+      }
+      catch (fc::exception& /*e*/) {
+        elog ("Peer ${peer} sent a handshake with an unrecoverable key. Closing connection.",
+              ("peer", msg.producer));
+        close (c);
+        return;
+      }
+
       chain_controller& cc = chain_plug->chain();
+
+      if (cc.get_producer(msg.producer).signing_key != peer_key) {
+        elog ("Peer ${peer} sent a handshake with a nonmatching key.  Check genesis.json.",
+              ("peer", msg.producer));
+        close (c);
+        return;
+      }
+
       uint32_t lib_num = cc.last_irreversible_block_num( );
       uint32_t peer_lib = msg.last_irreversible_block_num;
       bool on_fork = false;
@@ -1502,6 +1523,10 @@ namespace eos {
     hello.network_version = my_impl->network_version;
     hello.chain_id = my_impl->chain_id;
     hello.node_id = my_impl->node_id;
+    producer_plugin& pp = *app().find_plugin<producer_plugin>();
+    hello.producer = pp.first_producer_name();
+    hello.token = fc::sha256::hash(std::chrono::system_clock::now().time_since_epoch().count());
+    hello.sig = pp.sign_compact(hello.producer, hello.token);
     hello.p2p_address = my_impl->p2p_address;
 #if defined( __APPLE__ )
     hello.os = "osx";
@@ -1520,7 +1545,7 @@ namespace eos {
       hello.last_irreversible_block_id = cc.get_block_id_for_num
        ( hello.last_irreversible_block_num = cc.last_irreversible_block_num());
     }
-    catch( const unknown_block_exception &ex) {
+    catch( const unknown_block_exception& /*ex*/) {
       hello.last_irreversible_block_id = fc::sha256::hash(0);
       hello.last_irreversible_block_num = 0;
     }

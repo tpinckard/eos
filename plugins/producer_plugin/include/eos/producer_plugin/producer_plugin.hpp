@@ -56,6 +56,9 @@ public:
       boost::program_options::options_description &config_file_options
       ) override;
 
+   Name first_producer_name() const;
+   fc::ecc::compact_signature sign_compact(const Name& producer, const fc::sha256& digest) const;
+
    virtual void plugin_initialize(const boost::program_options::variables_map& options);
    virtual void plugin_startup();
    virtual void plugin_shutdown();

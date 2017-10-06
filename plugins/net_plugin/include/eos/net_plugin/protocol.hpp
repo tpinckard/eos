@@ -11,6 +11,9 @@ namespace eos {
       int16_t         network_version = 0;
       chain_id_type   chain_id; ///< used to identify chain
       fc::sha256      node_id; ///< used to identify peers and prevent self-connect
+      Name            producer; ///< first producer name on this node
+      fc::sha256      token; ///< digest to prove we own the private key of the producer named above
+      fc::ecc::compact_signature sig; ///< signature for the digest
       string          p2p_address;
       uint32_t        last_irreversible_block_num = 0;
       block_id_type   last_irreversible_block_id;
@@ -21,8 +24,6 @@ namespace eos {
    };
 
    typedef std::chrono::system_clock::duration::rep tstamp;
-   typedef int32_t                                  tdist;
-
    static_assert(sizeof(std::chrono::system_clock::duration::rep) >= 8, "system_clock is expected to be at least 64 bits");
 
    struct time_message {
@@ -74,8 +75,8 @@ namespace eos {
 
 
 FC_REFLECT( eos::handshake_message,
-            (network_version)(chain_id)(node_id)
-            (p2p_address)
+            (network_version)(chain_id)(node_id)(producer)
+            (token)(sig)(p2p_address)
             (last_irreversible_block_num)(last_irreversible_block_id)
             (head_num)(head_id)
             (os)(agent) )
