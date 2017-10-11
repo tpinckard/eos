@@ -894,25 +894,27 @@ namespace eos {
         return;
       }
 
-      types::PublicKey peer_key;
-      try {
-        peer_key = ecc::public_key(msg.sig, msg.token, true);
-      }
-      catch (fc::exception& /*e*/) {
-        elog ("Peer ${peer} sent a handshake with an unrecoverable key. Closing connection.",
-              ("peer", msg.producer));
-        close (c);
-        return;
-      }
-
       chain_controller& cc = chain_plug->chain();
 
-      if (cc.get_producer(msg.producer).signing_key != peer_key) {
-        elog ("Peer ${peer} sent a handshake with a nonmatching key.  Check genesis.json.",
-              ("peer", msg.producer));
-        close (c);
-        return;
-      }
+      if( msg.sig != ecc::compact_signature() && msg.token != sha256() ) {
+        types::PublicKey peer_key;
+        try {
+          peer_key = ecc::public_key(msg.sig, msg.token, true);
+        }
+        catch (fc::exception& /*e*/) {
+          elog( "Peer ${peer} sent a handshake with an unrecoverable key. Closing connection.",
+                ("peer", msg.producer));
+          close( c);
+          return;
+        }
+
+        if (cc.get_producer(msg.producer).signing_key != peer_key) {
+          elog( "Peer ${peer} sent a handshake with a nonmatching key.  Check genesis.json.",
+                ("peer", msg.producer));
+          close( c);
+          return;
+        }
+      } // else Peer is non-producing.  Accept no blocks from them.
 
       uint32_t lib_num = cc.last_irreversible_block_num( );
       uint32_t peer_lib = msg.last_irreversible_block_num;
@@ -1526,7 +1528,14 @@ namespace eos {
     producer_plugin& pp = *app().find_plugin<producer_plugin>();
     hello.producer = pp.first_producer_name();
     hello.token = fc::sha256::hash(std::chrono::system_clock::now().time_since_epoch().count());
-    hello.sig = pp.sign_compact(hello.producer, hello.token);
+    try {
+      hello.sig = pp.sign_compact(hello.producer, hello.token);
+    }
+    catch (...) {
+      // If we couldn't sign, we're not a producer.
+      hello.token = sha256();
+      hello.sig = ecc::compact_signature();
+    }
     hello.p2p_address = my_impl->p2p_address;
 #if defined( __APPLE__ )
     hello.os = "osx";
@@ -1638,7 +1647,7 @@ namespace eos {
     my->chain_plug = app().find_plugin<chain_plugin>();
     my->chain_plug->get_chain_id(my->chain_id);
     fc::rand_pseudo_bytes(my->node_id.data(), my->node_id.data_size());
-    ilog ("my node_id is $id",("id",my->node_id));
+    ilog ("my node_id is ${id}",("id",my->node_id));
 
     my->keepalive_timer.reset(new boost::asio::steady_timer (app().get_io_service()));
     my->ticker();
