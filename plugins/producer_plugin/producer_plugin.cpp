@@ -52,7 +52,7 @@ public:
 
    boost::program_options::variables_map _options;
    bool _production_enabled = false;
-   uint32_t _required_producer_participation = 33 * config::Percent1;
+   uint32_t _required_producer_participation = uint32_t(config::RequiredProducerParticipation);
    uint32_t _production_skip_flags = eos::chain::chain_controller::skip_nothing;
    eos::chain::block_schedule::factory _production_scheduler = eos::chain::block_schedule::in_single_thread;
 
