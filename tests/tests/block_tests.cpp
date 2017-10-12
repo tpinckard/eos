@@ -435,7 +435,7 @@ BOOST_FIXTURE_TEST_CASE( rsf_missed_blocks, testing_fixture )
       BOOST_CHECK_EQUAL( rsf(),
          "1111111111111111111111111111111111111111111111111111111111111111"
       ); // For very small producer nets.  All zeros otherwise.
-      BOOST_CHECK_EQUAL( chain.producer_participation_rate(), pct(0) );
+      BOOST_CHECK_EQUAL( chain.producer_participation_rate(), config::Percent100 );
 
       chain.produce_blocks(1, 63);
       BOOST_CHECK_EQUAL( rsf(),
