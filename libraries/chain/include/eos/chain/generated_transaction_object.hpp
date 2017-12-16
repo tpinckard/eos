@@ -8,12 +8,11 @@
 #include <eos/chain/transaction.hpp>
 #include <fc/uint128.hpp>
 
-#include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 
 #include "multi_index_includes.hpp"
 
-namespace eos { namespace chain {
+namespace eosio { namespace chain {
    using boost::multi_index_container;
    using namespace boost::multi_index;
    /**
@@ -33,7 +32,7 @@ namespace eos { namespace chain {
 
 
          id_type                       id;
-         GeneratedTransaction          trx;
+         generated_transaction          trx;
          status_type                   status;
          
          time_point_sec get_expiration()const { return trx.expiration; }
@@ -48,7 +47,7 @@ namespace eos { namespace chain {
       generated_transaction_object,
       indexed_by<
          ordered_unique<tag<by_id>, BOOST_MULTI_INDEX_MEMBER(generated_transaction_object, generated_transaction_object::id_type, id)>,
-         hashed_unique<tag<generated_transaction_object::by_trx_id>, const_mem_fun<generated_transaction_object, generated_transaction_id_type, &generated_transaction_object::get_id>>,
+         ordered_unique<tag<generated_transaction_object::by_trx_id>, const_mem_fun<generated_transaction_object, generated_transaction_id_type, &generated_transaction_object::get_id>>,
          ordered_non_unique<tag<generated_transaction_object::by_expiration>, const_mem_fun<generated_transaction_object, time_point_sec, &generated_transaction_object::get_expiration>>,
          ordered_non_unique<tag<generated_transaction_object::by_status>, BOOST_MULTI_INDEX_MEMBER(generated_transaction_object, generated_transaction_object::status_type, status)>
       >
@@ -57,6 +56,6 @@ namespace eos { namespace chain {
    typedef chainbase::generic_index<generated_transaction_multi_index> generated_transaction_index;
 } }
 
-CHAINBASE_SET_INDEX_TYPE(eos::chain::generated_transaction_object, eos::chain::generated_transaction_multi_index)
+CHAINBASE_SET_INDEX_TYPE(eosio::chain::generated_transaction_object, eosio::chain::generated_transaction_multi_index)
 
-FC_REFLECT( eos::chain::generated_transaction_object, (trx) )
+FC_REFLECT( eosio::chain::generated_transaction_object, (trx) )

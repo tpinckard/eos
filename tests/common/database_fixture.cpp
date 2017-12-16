@@ -20,6 +20,13 @@
 #include <fc/crypto/digest.hpp>
 #include <fc/smart_ref_impl.hpp>
 
+#include <Inline/BasicTypes.h>
+#include <IR/Module.h>
+#include <IR/Validate.h>
+#include <WAST/WAST.h>
+#include <WASM/WASM.h>
+#include <Runtime/Runtime.h>
+
 #include <boost/range/adaptor/map.hpp>
 
 #include <iostream>
@@ -30,13 +37,11 @@
 
 uint32_t EOS_TESTING_GENESIS_TIMESTAMP = 1431700005;
 
-namespace eos { namespace chain {
-   using namespace native::eos;
-   using namespace native;
+namespace eosio { namespace chain {
 
 testing_fixture::testing_fixture() {
    default_genesis_state.initial_timestamp = fc::time_point_sec(EOS_TESTING_GENESIS_TIMESTAMP);
-   for (int i = 0; i < config::BlocksPerRound; ++i) {
+   for (int i = 0; i < config::blocks_per_round; ++i) {
       auto name = std::string("inita"); name.back()+=i;
       auto private_key = fc::ecc::private_key::regenerate(fc::sha256::hash(name));
       public_key_type public_key = private_key.get_public_key();
@@ -85,11 +90,34 @@ flat_set<public_key_type> testing_fixture::available_keys() const {
 }
 
 testing_blockchain::testing_blockchain(chainbase::database& db, fork_database& fork_db, block_log& blocklog,
-                                   chain_initializer_interface& initializer, testing_fixture& fixture)
+                                       chain_initializer_interface& initializer, testing_fixture& fixture)
    : chain_controller(db, fork_db, blocklog, initializer, native_contract::make_administrator(),
-                      ::eos::chain_plugin::DEFAULT_TRANSACTION_EXECUTION_TIME * 1000,
-                      ::eos::chain_plugin::DEFAULT_RECEIVED_BLOCK_TRANSACTION_EXECUTION_TIME * 1000,
-                      ::eos::chain_plugin::DEFAULT_CREATE_BLOCK_TRANSACTION_EXECUTION_TIME * 1000),
+                      config::default_block_interval_seconds,
+                      ::eosio::chain_plugin::default_transaction_execution_time * 1000,
+                      ::eosio::chain_plugin::default_received_block_transaction_execution_time * 1000,
+                      ::eosio::chain_plugin::default_create_block_transaction_execution_time * 1000,
+                      chain_controller::txn_msg_limits{ fc::time_point_sec(30),
+                                                        100000,
+                                                        fc::time_point_sec(30),
+                                                        100000,
+                                                        config::default_pending_txn_depth_limit,
+                                                        config::default_gen_block_time_limit
+                                                      }),
+     db(db),
+     fixture(fixture) {}
+
+testing_blockchain::testing_blockchain(chainbase::database& db, fork_database& fork_db, block_log& blocklog,
+                                       chain_initializer_interface& initializer, testing_fixture& fixture,
+                                       uint32_t transaction_execution_time_msec,
+                                       uint32_t received_block_execution_time_msec,
+                                       uint32_t create_block_execution_time_msec,
+                                       const chain_controller::txn_msg_limits& rate_limits)
+   : chain_controller(db, fork_db, blocklog, initializer, native_contract::make_administrator(),
+                      config::default_block_interval_seconds,
+                      transaction_execution_time_msec * 1000,
+                      received_block_execution_time_msec * 1000,
+                      create_block_execution_time_msec * 1000,
+                      rate_limits),
      db(db),
      fixture(fixture) {}
 
@@ -127,32 +155,32 @@ void testing_blockchain::sync_with(testing_blockchain& other) {
    sync_dbs(other, *this);
 }
 
-types::Asset testing_blockchain::get_liquid_balance(const types::AccountName& account) {
-   return get_database().get<BalanceObject, native::eos::byOwnerName>(account).balance;
+types::asset testing_blockchain::get_liquid_balance(const types::account_name& account) {
+   return get_database().get<balance_object, eosio::chain::by_owner_name>(account).balance;
 }
 
-types::Asset testing_blockchain::get_staked_balance(const types::AccountName& account) {
-   return get_database().get<StakedBalanceObject, native::eos::byOwnerName>(account).stakedBalance;
+types::asset testing_blockchain::get_staked_balance(const types::account_name& account) {
+   return get_database().get<staked_balance_object, eosio::chain::by_owner_name>(account).staked_balance;
 }
 
-types::Asset testing_blockchain::get_unstaking_balance(const types::AccountName& account) {
-   return get_database().get<StakedBalanceObject, native::eos::byOwnerName>(account).unstakingBalance;
+types::asset testing_blockchain::get_unstaking_balance(const types::account_name& account) {
+   return get_database().get<staked_balance_object, eosio::chain::by_owner_name>(account).unstaking_balance;
 }
 
-std::set<types::AccountName> testing_blockchain::get_approved_producers(const types::AccountName& account) {
-   const auto& sbo = get_database().get<StakedBalanceObject, byOwnerName>(account);
-   if (sbo.producerVotes.contains<ProducerSlate>()) {
-      auto range = sbo.producerVotes.get<ProducerSlate>().range();
+std::set<types::account_name> testing_blockchain::get_approved_producers(const types::account_name& account) {
+   const auto& sbo = get_database().get<staked_balance_object, by_owner_name>(account);
+   if (sbo.producer_votes.contains<producer_slate>()) {
+      auto range = sbo.producer_votes.get<producer_slate>().range();
       return {range.begin(), range.end()};
    }
    return {};
 }
 
-types::PublicKey testing_blockchain::get_block_signing_key(const types::AccountName& producerName) {
+types::public_key testing_blockchain::get_block_signing_key(const types::account_name& producerName) {
    return get_database().get<producer_object, by_owner>(producerName).signing_key;
 }
 
-void testing_blockchain::sign_transaction(SignedTransaction& trx) const {
+void testing_blockchain::sign_transaction(signed_transaction& trx) const {
    auto keys = get_required_keys(trx, fixture.available_keys());
    for (const auto& k : keys) {
       // TODO: Use a real chain_id here
@@ -160,7 +188,7 @@ void testing_blockchain::sign_transaction(SignedTransaction& trx) const {
    }
 }
 
-fc::optional<ProcessedTransaction> testing_blockchain::push_transaction(SignedTransaction trx, uint32_t skip_flags) {
+fc::optional<processed_transaction> testing_blockchain::push_transaction(signed_transaction trx, uint32_t skip_flags) {
    if (skip_trx_sigs)
       skip_flags |= chain_controller::skip_transaction_signatures;
 
@@ -174,6 +202,41 @@ fc::optional<ProcessedTransaction> testing_blockchain::push_transaction(SignedTr
    }
    return chain_controller::push_transaction(trx, skip_flags | chain_controller::pushed_transaction);
 }
+
+vector<uint8_t> testing_blockchain::assemble_wast( const std::string& wast ) {
+   //   std::cout << "\n" << wast << "\n";
+   IR::Module module;
+   std::vector<WAST::Error> parseErrors;
+   WAST::parseModule(wast.c_str(),wast.size(),module,parseErrors);
+   if(parseErrors.size())
+   {
+      // Print any parse errors;
+      std::cerr << "Error parsing WebAssembly text file:" << std::endl;
+      for(auto& error : parseErrors)
+      {
+         std::cerr << ":" << error.locus.describe() << ": " << error.message.c_str() << std::endl;
+         std::cerr << error.locus.sourceLine << std::endl;
+         std::cerr << std::setw(error.locus.column(8)) << "^" << std::endl;
+      }
+      FC_ASSERT( !"error parsing wast" );
+   }
+
+   try
+   {
+      // Serialize the WebAssembly module.
+      Serialization::ArrayOutputStream stream;
+      WASM::serialize(stream,module);
+      return stream.getBytes();
+   }
+   catch(Serialization::FatalSerializationException exception)
+   {
+      std::cerr << "Error serializing WebAssembly binary file:" << std::endl;
+      std::cerr << exception.message << std::endl;
+      throw;
+   }
+}
+
+
 
 void testing_network::connect_blockchain(testing_blockchain& new_database) {
    if (blockchains.count(&new_database))
@@ -208,4 +271,4 @@ void testing_network::propagate_block(const signed_block& block, const testing_b
    }
 }
 
-} } // eos::chain
+} } // eosio::chain

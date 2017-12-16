@@ -7,25 +7,33 @@
 #include <eoslib/types.h>
 
 /**
- *  @defgroup chaincapi Chain API
+ *  @defgroup chainapi Chain API
  *  @brief Define API for querying internal chain state
  *  @ingroup contractdev
+ */
+
+/**
+ *  @defgroup chaincapi Chain C API
+ *  @brief C API for querying internal chain state
+ *  @ingroup chainapi
+ *  @{
  */
 
 extern "C" {
    /**
     * @brief Return the set of active producers
+    * @details Return the set of active producers
     *
     * @param producers - location to store the active producers
     *
     *  Example:
     *  @code
-    *  AccountName producers[21];
-    *  getActiveProducers(producers, sizeof(AccountName)*21);
+    *  account_name producers[21];
+    *  get_active_producers(producers, sizeof(account_name)*21);
     *  @endcode
     */
 
-   void getActiveProducers( AccountName* producers, uint32_t datalen );
+   void get_active_producers( account_name* producers, uint32_t datalen );
 
    ///@ } chaincapi
 }

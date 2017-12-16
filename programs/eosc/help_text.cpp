@@ -6,7 +6,7 @@
 #include "localize.hpp"
 #include <regex>
 
-using namespace eos::client::localize;
+using namespace eosio::client::localize;
 
 const char* transaction_help_text_header = _("An error occurred while submitting the transaction for this command!");
 
@@ -79,7 +79,7 @@ const std::vector<std::pair<const char*, std::vector<const char *>>> error_help_
    {"AES error[^\\x00]*wallet/unlock.*postdata\":\\[\"([^\"]*)\"", {bad_wallet_password_help_text}},
    {"Wallet is locked: ([\\S]*)", {locked_wallet_help_text}},
    {"Key already in wallet[^\\x00]*wallet/import_key.*postdata\":\\[\"([^\"]*)\"", {duplicate_key_import_help_text}},
-   {"Abi does not define table[^\\x00]*get_table_rows.*code\":\"([^\"]*)\",\"table\":\"([^\"]*)\"", {unknown_abi_table_help_text}}
+   {"ABI does not define table[^\\x00]*get_table_rows.*code\":\"([^\"]*)\",\"table\":\"([^\"]*)\"", {unknown_abi_table_help_text}}
 };
 
 auto smatch_to_variant(const std::smatch& smatch) {
@@ -96,11 +96,15 @@ auto smatch_to_variant(const std::smatch& smatch) {
    return result;
 };
 
-namespace eos { namespace client { namespace help {
+namespace eosio { namespace client { namespace help {
 
 bool print_help_text(const fc::exception& e) {
    bool result = false;
+   // Large input strings to std::regex can cause SIGSEGV, this is a known bug in libstdc++.
+   // See https://stackoverflow.com/questions/36304204/%D0%A1-regex-segfault-on-long-sequences
    auto detail_str = e.to_detail_string();
+   // 2048 nice round number. Picked for no particular reason. Bug above was reported for 22K+ strings.
+   if (detail_str.size() > 2048) return result;
    try {
       for (const auto& candidate : error_help_text) {
          auto expr = std::regex {candidate.first};
